@@ -1,0 +1,20 @@
+
+  1. Add your credentials:
+  cd naukri-bot
+  cp .env.example .env
+  # Edit .env: set NAUKRI_EMAIL and NAUKRI_PASSWORD
+
+  2. First-time login (handles OTP if Naukri prompts one):
+  npm run run-bot:headed
+
+  3. Start the dashboard server:
+  npm start
+  # Open http://localhost:4000
+
+  4. For 24/7 background operation:
+  npm install pm2 -g
+  pm2 start ecosystem.config.js
+  pm2 startup && pm2 save
+
+  Note on selectors: Naukri occasionally updates their UI. If scraping breaks, edit the SEL object at the top of src/automation/naukri.js —  
+  all selectors are in one place.

@@ -5,8 +5,8 @@ export const CONFIG = {
   PROFILE_URL: 'https://www.naukri.com/mnjuser/profile',
 
   TELEGRAM: {
-    token: 'YOUR_BOT_TOKEN_HERE', // e.g. '7123456789:AAFx...'
-    chatId: 'YOUR_CHAT_ID_HERE', // e.g. '123456789'
+    token: process.env.TELEGRAM_BOT_TOKEN, // e.g. '7123456789:AAFx...'
+    chatId: process.env.TELEGRAM_CHAT_ID, // e.g. '123456789'
     topN: 20, // how many jobs to send
   },
 

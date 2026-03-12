@@ -223,7 +223,12 @@ export async function scrapeUntilGoal(page, context, runId, onJobFound = null, r
     `\n🎯 Goal: find ${DAILY_TARGET} more qualified jobs | AI: ${aiAvailable ? '✅ ON' : '⚠️ OFF (static fallback)'}\n`,
   );
 
-  const shuffled = [...JOB_TARGETS].sort(() => Math.random() - 0.5);
+  // const shuffled = [...JOB_TARGETS].sort(() => Math.random() - 0.5);
+  const rand = Math.random();
+  const shuffled =
+    rand < 0.7
+      ? [JOB_TARGETS[0], JOB_TARGETS[1], JOB_TARGETS[2]] // 70% → react, mern, reactnative
+      : [JOB_TARGETS[1], JOB_TARGETS[0], JOB_TARGETS[2]];
   for (const target of shuffled) {
     if (qualified.length >= DAILY_TARGET) break;
 

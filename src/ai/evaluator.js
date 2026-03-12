@@ -34,6 +34,7 @@ DEVELOPER PROFILE:
 - Integrations: Stripe, Google Maps API, WebSockets, Social Login
 - Tools: Git, GitHub, Vercel, Netlify, Figma, CI/CD, Agile/Scrum
 - Location preference: Pune, Remote or anywhere in India
+- LEAST preferred: React Native / Mobile (only send if score is exceptional 80+)
 
 HARD REJECT RULES — if ANY of these match, return pass: false and score below 40, no exceptions:
 1. Job primarily requires Java, Spring Boot, Hibernate, J2EE, Core Java

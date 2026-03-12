@@ -1,41 +1,53 @@
 // ─────────────────────────────────────────────────────────────
-//  Entry point — run: node index.js  (or: npm start)
+//  Entry point
+//  Reads --mode flag and routes to correct mode
+//
+//  Usage (via bot.sh):
+//    ./bot.sh quick 15    → quick mode, 15 minutes
+//    ./bot.sh live        → live mode, runs all day
+//    ./bot.sh report      → send daily report to Telegram
+//    ./bot.sh status      → print today's queue stats
 // ─────────────────────────────────────────────────────────────
 
-import fs from 'fs';
-import { JOB_TARGETS } from './src/constants/jobTargets.js';
-import { CONFIG } from './src/constants/config.js';
-import { launchBrowser } from './src/utils/browser.js';
-import { scrapeType } from './src/scraper.js';
-import { notifyTelegram } from './src/utils/telegram.js';
+import 'dotenv/config';
+import { runMigrations } from './src/db/migrations.js';
+import { getTodayStats } from './src/db/queries/jobs.js';
+import { sendDailyReport, notify } from './src/utils/telegram.js';
 
-const { browser, context, page } = await launchBrowser();
-const result = {};
+// ── Bootstrap DB ─────────────────────────────────────────────
+runMigrations();
 
-try {
-  for (const entry of JOB_TARGETS) {
-    // Pass context so scraper can open job pages for Easy Apply check
-    const jobs = await scrapeType(page, context, entry);
-    result[entry.type] = jobs;
-    const easyCount = jobs.filter((j) => j.is_auto_apply_available).length;
-    console.log(
-      `\n📦 [${entry.type}] ${jobs.length} jobs | ✅ ${easyCount} Easy Apply | Top: "${jobs[0]?.title}" (${jobs[0]?.score}/10)`,
-    );
-  }
-} catch (err) {
-  console.error('❌ Fatal error:', err.message);
-} finally {
-  await browser.close();
-}
+// ── Parse flags ───────────────────────────────────────────────
+const args = process.argv.slice(2);
+const getArg = (flag) => {
+  const i = args.findIndex((a) => a.startsWith(`--${flag}`));
+  if (i === -1) return null;
+  return args[i].split('=')[1] || args[i + 1] || null;
+};
 
-const flat = Object.entries(result).flatMap(([type, jobs]) => jobs.map((j) => ({ ...j, type })));
+const mode = getArg('mode') || 'quick';
+const minutes = parseInt(getArg('minutes') || '15');
 
-fs.writeFileSync(CONFIG.OUTPUT_FILE, JSON.stringify(flat, null, 2));
-console.log(`\n✅ ${flat.length} total jobs saved → ${CONFIG.OUTPUT_FILE}`);
+console.log(
+  `\n🤖 Naukri Bot starting — mode: ${mode}${mode === 'quick' ? ` (${minutes} mins)` : ''}\n`,
+);
 
-const { token, chatId, topN } = CONFIG.TELEGRAM;
-if (token !== 'YOUR_BOT_TOKEN_HERE') {
-  await notifyTelegram(token, chatId, flat, topN);
+// ── Route to mode ─────────────────────────────────────────────
+if (mode === 'quick') {
+  const { runQuick } = await import('./src/modes/quick.js');
+  await runQuick(minutes);
+} else if (mode === 'live') {
+  const { runLive } = await import('./src/modes/live.js');
+  await runLive();
+} else if (mode === 'report') {
+  await sendDailyReport();
+  console.log('✅ Daily report sent');
+} else if (mode === 'status') {
+  const stats = getTodayStats();
+  console.log("\n📊 Today's stats:");
+  console.table(stats);
 } else {
-  console.log('⚠️  Telegram not configured — skipping notification');
+  console.error(`❌ Unknown mode: ${mode}`);
+  console.log('Valid modes: quick, live, report, status');
+  process.exit(1);
 }

@@ -1,16 +1,29 @@
 {
-  "name": "new-folder",
+  "name": "naukri-bot",
   "version": "1.0.0",
-  "description": "",
+  "description": "Naukri job scraper bot",
   "type": "module",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node index.js --mode=quick --minutes=15",
+    "quick": "node index.js --mode=quick --minutes=15",
+    "quick:30": "node index.js --mode=quick --minutes=30",
+    "live": "node index.js --mode=live",
+    "report": "node index.js --mode=report",
+    "status": "node index.js --mode=status",
+    "db": "node --input-type=module --eval \"import db from './src/db/client.js'; console.table(db.prepare('SELECT id,title,score,status,applicants,how_long,city FROM jobs ORDER BY found_at DESC LIMIT 50').all())\"",
+    "db:applied": "node --input-type=module --eval \"import db from './src/db/client.js'; console.table(db.prepare(\\\"SELECT * FROM jobs WHERE status='applied'\\\").all())\"",
+    "db:stats": "node --input-type=module --eval \"import db from './src/db/client.js'; console.table(db.prepare(\\\"SELECT status, COUNT(*) as count FROM jobs GROUP BY status\\\").all())\"",
+    "db:links": "node --input-type=module --eval \"import db from './src/db/client.js'; db.prepare('SELECT id,title,link,score FROM jobs ORDER BY score DESC').all().forEach(j => console.log('['+j.id+'] '+j.score+'/100 | '+j.title+'\\n    '+j.link+'\\n'))\""
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "playwright": "^1.58.2"
+    "better-sqlite3": "^12.6.2",
+    "dotenv": "^17.3.1",
+    "express": "^5.2.1",
+    "playwright": "^1.58.2",
+    "uuid": "^13.0.0"
   }
 }

@@ -1,10 +1,64 @@
 // ─────────────────────────────────────────────────────────────
-//  Core scraper — card extraction + job page enrichment + retry
+//  Scraper — goal-driven
+//  Scrapes page by page until DAILY_TARGET qualified jobs found
+//
+//  3-gate system before visiting any detail page:
+//  Gate 1 — hard filter  (blocklist, date, exp)       free
+//  Gate 2 — pre-score    (keywords+recency+exp ≥ 40)  free
+//  Gate 3 — detail visit (applicants, salary, skills) costs a page visit
 // ─────────────────────────────────────────────────────────────
 
-import { CONFIG } from './constants/config.js';
-import { sleep, parsePostedOn, isBlocked } from './utils/helpers.js';
-import { sortByDate, clickNextPage } from './utils/browser.js';
+import { FILTERS } from '../config/filters.js';
+import { JOB_TARGETS } from './constants/jobTargets.js';
+import { insertJob, isNewJob } from './db/queries/jobs.js';
+import { getSetting } from './db/queries/settings.js';
+import { hardFilter, hoursAgo, parseExperience } from './pipeline/filter.js';
+import { scoreJob } from './pipeline/scorer.js';
+import { clickNextPage, sortByDate } from './utils/browser.js';
+import { parsePostedOn, sleep } from './utils/helpers.js';
+
+// ── Pre-score gate (card data only, no page visit) ────────────
+// Uses keywords + recency + experience — max 70pts possible
+// If this doesn't clear 40, final score can never reach 70
+// so skip the detail page entirely
+
+const PRE_SCORE_THRESHOLD = 40;
+
+function preScore(card, keywords) {
+  const W = FILTERS.WEIGHTS;
+
+  // Keywords (0→35) using title + card skills
+  const haystack = `${card.title} ${card.skills || ''}`.toLowerCase();
+  const matched = keywords.filter((kw) => haystack.includes(kw.toLowerCase()));
+  const kwScore = Math.round((matched.length / keywords.length) * W.keywords);
+
+  // Recency (0→25)
+  const hours = hoursAgo(card.how_long);
+  let recencyScore = 0;
+  if (hours <= 3) recencyScore = FILTERS.RECENCY_SCORE.under_3_hours;
+  else if (hours <= 6) recencyScore = FILTERS.RECENCY_SCORE.under_6_hours;
+  else if (hours <= 12) recencyScore = FILTERS.RECENCY_SCORE.under_12_hours;
+  else if (hours <= 24) recencyScore = FILTERS.RECENCY_SCORE.under_24_hours;
+  else if (hours <= 48) recencyScore = FILTERS.RECENCY_SCORE.yesterday;
+
+  // Experience fit (0→10)
+  const exp = parseExperience(card.experience);
+  let expScore = FILTERS.EXP_SCORE.acceptable;
+  if (exp) {
+    if (exp.max <= 2.5) expScore = FILTERS.EXP_SCORE.perfect;
+    else if (exp.max <= 4) expScore = FILTERS.EXP_SCORE.acceptable;
+    else expScore = 0;
+  }
+
+  return {
+    total: kwScore + recencyScore + expScore,
+    kw: kwScore,
+    rec: recencyScore,
+    exp: expScore,
+  };
+}
+
+// ── DOM selectors ─────────────────────────────────────────────
 
 const CARD_SELECTORS = [
   'div.cust-job-tuple',
@@ -14,340 +68,326 @@ const CARD_SELECTORS = [
   'div[data-job-id]',
 ];
 
-// ── Extract cards from listing page ──────────────────────────
+// ── Extract listing cards (one page) ─────────────────────────
 
-async function extractCards(page, entry) {
+async function extractListingCards(page) {
   await page.waitForSelector(CARD_SELECTORS.join(', '), { timeout: 12000 }).catch(() => {});
-  await sleep(CONFIG.DELAYS.afterCardLoad);
+  await sleep(800);
 
-  const rawJobs = await page.evaluate(
-    ({ cardSelectors, keywords, mustHave }) => {
-      let cards = [];
-      for (const sel of cardSelectors) {
-        cards = [...document.querySelectorAll(sel)];
-        if (cards.length) break;
-      }
+  return page.evaluate((selectors) => {
+    let cards = [];
+    for (const sel of selectors) {
+      cards = [...document.querySelectorAll(sel)];
+      if (cards.length) break;
+    }
 
-      return cards
-        .map((card) => {
-          const getText = (...sels) => {
-            for (const s of sels) {
-              const el = card.querySelector(s);
-              if (el?.innerText?.trim()) return el.innerText.trim();
-            }
-            return '';
-          };
-          const getHref = (...sels) => {
-            for (const s of sels) {
-              const el = card.querySelector(s);
-              if (el?.href) return el.href;
-            }
-            return '';
-          };
+    return cards
+      .map((card) => {
+        const getText = (...sels) => {
+          for (const s of sels) {
+            const el = card.querySelector(s);
+            if (el?.innerText?.trim()) return el.innerText.trim();
+          }
+          return '';
+        };
+        const getHref = (...sels) => {
+          for (const s of sels) {
+            const el = card.querySelector(s);
+            if (el?.href) return el.href;
+          }
+          return '';
+        };
 
-          const title = getText(
-            'a.title',
-            'a[class*="title"]',
-            '[class*="jobTitle"] a',
-            'h2 a',
-            'h3 a',
-          );
-          const link = getHref(
-            'a.title',
-            'a[class*="title"]',
-            '[class*="jobTitle"] a',
-            'h2 a',
-            'h3 a',
-          );
+        const title = getText(
+          'a.title',
+          'a[class*="title"]',
+          '[class*="jobTitle"] a',
+          'h2 a',
+          'h3 a',
+        );
+        const link = getHref(
+          'a.title',
+          'a[class*="title"]',
+          '[class*="jobTitle"] a',
+          'h2 a',
+          'h3 a',
+        );
 
-          const skillEls = card.querySelectorAll(
-            'ul.tags li, ul[class*="tag"] li, ul[class*="skill"] li, [class*="skillsList"] li, [class*="skills-list"] li',
-          );
-          const skills = skillEls.length
-            ? [...skillEls]
-                .map((e) => e.innerText.trim())
-                .filter(Boolean)
-                .join(', ')
-            : getText('[class*="skillsList"]', '[class*="skills"]', '.tags', '[class*="skill"]');
+        const skillEls = card.querySelectorAll(
+          'ul.tags li, ul[class*="tag"] li, ul[class*="skill"] li, [class*="skillsList"] li',
+        );
+        const skills = skillEls.length
+          ? [...skillEls]
+              .map((e) => e.innerText.trim())
+              .filter(Boolean)
+              .join(', ')
+          : getText('[class*="skillsList"]', '[class*="skills"]', '.tags');
 
-          const experience = getText(
-            '[class*="expwdth"]',
-            'span[class*="exp"]',
-            'li[class*="exp"]',
-            '[class*="experience"] li',
-            '[title*="year"]',
-            '.exp',
-          );
-          const city = getText(
-            '[class*="locWdth"]',
-            'span[class*="loc"]',
-            'li[class*="loc"]',
-            '[class*="location"] li',
-            '.location',
-            '[class*="city"]',
-          );
-          const how_long = getText(
-            'span.job-post-day',
-            'span[class*="job-post-day"]',
-            'span[class*="postDate"]',
-            'span[class*="posted"]',
-            '[class*="jobAge"]',
-            'span[class*="date"]',
-            '[class*="daysAgo"]',
-          );
+        const experience = getText(
+          '[class*="expwdth"]',
+          'span[class*="exp"]',
+          'li[class*="exp"]',
+          '[class*="experience"] li',
+          '.exp',
+        );
+        const city = getText(
+          '[class*="locWdth"]',
+          'span[class*="loc"]',
+          'li[class*="loc"]',
+          '[class*="location"] li',
+          '.location',
+        );
+        const how_long = getText(
+          'span.job-post-day',
+          'span[class*="job-post-day"]',
+          'span[class*="postDate"]',
+          '[class*="jobAge"]',
+          'span[class*="date"]',
+        );
 
-          const haystack = `${title} ${skills}`.toLowerCase();
-          const hasMust = mustHave.some((kw) => haystack.includes(kw.toLowerCase()));
-          const matched = keywords.filter((kw) => haystack.includes(kw.toLowerCase()));
-          const score = Math.min(10, Math.round((matched.length / keywords.length) * 14));
-
-          return { title, link, skills, experience, city, how_long, score, matched, hasMust };
-        })
-        .filter((j) => j.title && j.link);
-    },
-    { cardSelectors: CARD_SELECTORS, keywords: entry.keywords, mustHave: entry.mustHave },
-  );
-
-  return rawJobs.map((j) => ({
-    title: j.title,
-    link: j.link,
-    skills_needed: j.skills,
-    experience: j.experience,
-    city: j.city,
-    how_long: j.how_long,
-    posted_on: parsePostedOn(j.how_long),
-    score: j.score,
-    matched_keywords: j.matched,
-    _hasMust: j.hasMust,
-    // all enriched on job detail page visit
-    is_auto_apply_available: null,
-    applicants_count: null,
-    openings: null,
-    salary: null,
-  }));
+        return { title, link, skills, experience, city, how_long };
+      })
+      .filter((j) => j.title && j.link);
+  }, CARD_SELECTORS);
 }
 
-// ── Visit job detail page — grab everything in one shot ───────
+// ── Visit job detail page ─────────────────────────────────────
 
-async function scrapeJobDetail(context, jobUrl) {
-  const jobPage = await context.newPage();
-
-  const fallback = {
-    is_auto_apply_available: false,
-    applicants_count: null,
-    openings: null,
-    salary: null,
-    key_skills: null,
-  };
-
+async function scrapeDetail(context, jobUrl) {
+  const page = await context.newPage();
   try {
-    await jobPage.goto(jobUrl, { waitUntil: 'domcontentloaded', timeout: 20000 });
-    await sleep(800);
+    await page.goto(jobUrl, { waitUntil: 'domcontentloaded', timeout: 20000 });
+    await sleep(700);
 
-    const detail = await jobPage.evaluate(() => {
-      const getText = (...sels) => {
-        for (const s of sels) {
-          const el = document.querySelector(s);
-          if (el?.innerText?.trim()) return el.innerText.trim();
-        }
-        return null;
-      };
-
+    return await page.evaluate(() => {
       const allEls = [...document.querySelectorAll('span, div, li, p')];
-
-      // ── Easy Apply button
       const allBtns = [...document.querySelectorAll('button, a, span')];
-      const isEasyApply = allBtns.some((el) => /easy\s*apply/i.test(el.innerText));
 
-      // ── Applicants — "100+ Applicants" / "Be among the first applicants"
+      // Easy Apply
+      const easy_apply = allBtns.some((el) => /easy\s*apply/i.test(el.innerText));
+
+      // Applicants — parse number out of "100+ Applicants"
       let applicants = null;
       for (const el of allEls) {
         const t = el.innerText?.trim() || '';
         if (/applicant/i.test(t) && t.length < 80) {
-          applicants = t;
-          break;
-        }
-      }
-
-      // ── Openings — "1 Opening" / "3 Openings"
-      let openings = null;
-      for (const el of allEls) {
-        const t = el.innerText?.trim() || '';
-        if (/\d+\s*opening/i.test(t) && t.length < 40) {
-          openings = t;
-          break;
-        }
-      }
-
-      // ── Salary
-      let salary = getText(
-        '[class*="salary"]',
-        '[class*="ctc"]',
-        '[class*="compensation"]',
-        'span[class*="sal"]',
-        '[class*="package"]',
-      );
-      if (!salary) {
-        for (const el of allEls) {
-          const t = el.innerText?.trim() || '';
-          if (/not disclosed|lpa|lakh|₹|per annum/i.test(t) && t.length < 80) {
-            salary = t;
+          const n = t.match(/(\d+)\+?/);
+          if (n) {
+            applicants = parseInt(n[1]);
+            break;
+          }
+          if (/be among the first/i.test(t)) {
+            applicants = 1;
             break;
           }
         }
       }
 
-      // ── Key skills from detail page (much richer than listing card)
-      const skillChips = document.querySelectorAll(
+      // Openings
+      let openings = null;
+      for (const el of allEls) {
+        const t = el.innerText?.trim() || '';
+        const m = t.match(/(\d+)\s*opening/i);
+        if (m) {
+          openings = parseInt(m[1]);
+          break;
+        }
+      }
+
+      // Salary
+      let salary = null;
+      for (const el of allEls) {
+        const t = el.innerText?.trim() || '';
+        if (/not disclosed|lpa|lakh|₹|per annum/i.test(t) && t.length < 80) {
+          salary = t;
+          break;
+        }
+      }
+
+      // Full skills from detail page
+      const chipEls = document.querySelectorAll(
         '[class*="key-skill"] a, [class*="keySkill"] a, ' +
           '[class*="chip"], [class*="skill-chip"], ' +
-          '[class*="tag-container"] a, [class*="skillTag"], ' +
-          'a[class*="skill"], [class*="skills"] a',
+          '[class*="skillTag"], [class*="skills"] a',
       );
-      let key_skills = skillChips.length
-        ? [...skillChips]
+      const key_skills = chipEls.length
+        ? [...chipEls]
             .map((e) => e.innerText.trim())
             .filter(Boolean)
             .join(', ')
-        : getText('[class*="keySkills"]', '[class*="key-skills"]');
+        : null;
 
-      return { isEasyApply, applicants, openings, salary, key_skills };
+      return { easy_apply, applicants, openings, salary, key_skills };
     });
-
-    return {
-      is_auto_apply_available: detail.isEasyApply,
-      applicants_count: detail.applicants,
-      openings: detail.openings,
-      salary: detail.salary,
-      key_skills: detail.key_skills,
-    };
-  } catch (e) {
-    console.log(`    ⚠️  Detail page failed: ${jobUrl.slice(0, 55)}...`);
-    return fallback;
+  } catch {
+    return { easy_apply: false, applicants: null, openings: null, salary: null, key_skills: null };
   } finally {
-    await jobPage.close();
+    await page.close();
   }
 }
 
-// ── Enrich all jobs with detail page data ─────────────────────
+// ── Main scrape function ──────────────────────────────────────
 
-async function enrichJobDetails(context, jobs) {
-  console.log(`  🔍 Fetching detail pages for ${jobs.length} jobs...`);
+/**
+ * Scrapes page by page across all job targets.
+ * Stops as soon as DAILY_TARGET qualified jobs are found.
+ * Returns array of fully enriched + scored jobs.
+ */
+export async function scrapeUntilGoal(page, context, runId, onJobFound = null, remaining = null) {
+  const DAILY_TARGET = remaining ?? getSetting('DAILY_TARGET');
+  const MAX_PAGES_PER_TYPE = getSetting('MAX_PAGES_PER_TYPE');
+  const DEAD_PAGES_LIMIT = getSetting('DEAD_PAGES_LIMIT');
 
-  for (let i = 0; i < jobs.length; i++) {
-    const job = jobs[i];
-    const detail = await scrapeJobDetail(context, job.link);
+  const qualified = [];
+  let totalScrped = 0;
 
-    job.is_auto_apply_available = detail.is_auto_apply_available;
-    job.applicants_count = detail.applicants_count;
-    job.openings = detail.openings;
-    job.salary = detail.salary;
+  console.log(`\n🎯 Goal: find ${DAILY_TARGET} more qualified jobs\n`);
 
-    // Prefer detail page skills — they're always more complete
-    if (detail.key_skills) job.skills_needed = detail.key_skills;
+  for (const target of JOB_TARGETS) {
+    if (qualified.length >= DAILY_TARGET) break;
 
-    const tag = job.is_auto_apply_available ? '✅ Easy Apply' : '📝 Manual';
-    const applicants = job.applicants_count || '? applicants';
-    console.log(`    [${i + 1}/${jobs.length}] ${tag} | ${applicants} — ${job.title}`);
+    console.log(`\n🔍 [${target.type}] Starting...`);
 
-    await sleep(400);
-  }
+    await page.goto(target.url, { waitUntil: 'domcontentloaded', timeout: 40000 });
+    await sleep(1500);
+    await sortByDate(page);
 
-  return jobs;
-}
+    let pageNum = 1;
+    let deadPages = 0;
 
-// ── Scrape one type (single attempt) ─────────────────────────
+    while (qualified.length < DAILY_TARGET && pageNum <= MAX_PAGES_PER_TYPE) {
+      console.log(`  📄 Page ${pageNum} | Qualified so far: ${qualified.length}/${DAILY_TARGET}`);
 
-async function scrapeTypeOnce(page, entry) {
-  const collected = [];
-  let pageNum = 1;
+      // Step 1 — get raw cards from listing
+      const rawCards = await extractListingCards(page);
+      totalScrped += rawCards.length;
 
-  await page.goto(entry.url, { waitUntil: 'domcontentloaded', timeout: 40000 });
-  await sleep(CONFIG.DELAYS.afterPageLoad);
-  await sortByDate(page);
+      if (!rawCards.length) break;
 
-  while (collected.length < CONFIG.TARGET_PER_TYPE) {
-    console.log(`  📄 Page ${pageNum} | Collected: ${collected.length}/${CONFIG.TARGET_PER_TYPE}`);
-
-    const cards = await extractCards(page, entry);
-    let passed = 0,
-      blocked = 0,
-      noMust = 0,
-      lowScore = 0;
-
-    for (const job of cards) {
-      if (isBlocked(job.title)) {
-        blocked++;
-        continue;
+      // Step 2 — hard filter (instant, no page visits)
+      const survivors = [];
+      for (const card of rawCards) {
+        const { passed, reason } = hardFilter({ ...card, type: target.type });
+        if (passed) survivors.push({ ...card, type: target.type });
       }
-      if (!job._hasMust) {
-        noMust++;
-        continue;
+
+      console.log(`  ✅ ${rawCards.length} cards → ${survivors.length} passed hard filter`);
+
+      if (survivors.length === 0) {
+        deadPages++;
+        console.log(`  ⚠️  Dead page ${deadPages}/${DEAD_PAGES_LIMIT}`);
+        if (deadPages >= DEAD_PAGES_LIMIT) {
+          console.log(`  🚫 Too many dead pages — moving to next type`);
+          break;
+        }
+      } else {
+        deadPages = 0;
       }
-      if (job.score < CONFIG.MIN_SCORE) {
-        lowScore++;
-        continue;
+
+      // Step 3 — visit detail pages ONLY for survivors that pass pre-score
+      for (const job of survivors) {
+        if (qualified.length >= DAILY_TARGET) break;
+
+        // Gate 1 — dedup check (free)
+        if (!isNewJob(job.link)) {
+          console.log(`    ⏭  Duplicate — ${job.title}`);
+          continue;
+        }
+
+        // Gate 2 — pre-score on card data only (free, no page visit)
+        // Scores keywords + recency + experience from listing card
+        // If can't reach MIN_SCORE even with perfect applicants/easy_apply → skip
+        const preScoreBreakdown = preScore(job, target.keywords);
+        const ps = preScoreBreakdown.total;
+
+        if (ps < PRE_SCORE_THRESHOLD) {
+          console.group(`⏭ SKIPPED: ${job.title}`);
+
+          console.log(`Score: ${ps} (threshold ${PRE_SCORE_THRESHOLD})`);
+
+          console.group('Score Breakdown');
+          console.log(`keywords: ${preScoreBreakdown.kw}`);
+          console.log(`recency : ${preScoreBreakdown.rec}`);
+          console.log(`exp     : ${preScoreBreakdown.exp}`);
+          console.groupEnd();
+
+          console.group('Job Details');
+          console.log(`posted: ${job.how_long}`);
+          console.log(`experience: ${job.experience}`);
+          console.log(`skills: ${job.skills?.slice(0, 60)}`);
+          console.groupEnd();
+
+          console.groupEnd();
+
+          continue;
+        }
+
+        // FIND THIS:
+        console.log(`    ⏭  Pre-score too low (${ps}) — skipping detail page — ${job.title}`);
+
+        // REPLACE WITH:
+
+        console.log(`    🔎 Pre-score: ${ps} — visiting detail page — ${job.title}`);
+
+        // Gate 3 — visit detail page (costs one page open)
+        const detail = await scrapeDetail(context, job.link);
+        await sleep(400);
+
+        // Merge listing + detail
+        const enriched = {
+          ...job,
+          easy_apply: detail.easy_apply,
+          applicants: detail.applicants,
+          openings: detail.openings,
+          salary: detail.salary,
+          skills_needed: detail.key_skills || job.skills,
+          posted_on: parsePostedOn(job.how_long),
+        };
+
+        // Step 4 — score
+        const { score, priority, matched_keywords, breakdown } = scoreJob(
+          enriched,
+          target.keywords,
+        );
+
+        const MIN_SCORE = getSetting('MIN_SCORE');
+        if (score < MIN_SCORE) {
+          console.log(`    ❌ Score too low (${score}) — ${job.title}`);
+          continue;
+        }
+
+        const finalJob = { ...enriched, score, priority, matched_keywords };
+
+        // Save to DB
+        insertJob(finalJob, runId);
+        qualified.push(finalJob);
+
+        const tag = priority === 'hot' ? '🔥 HOT' : '✅';
+        console.log(
+          `    ${tag} [${score}/100] ${job.title} | ${detail.applicants ?? '?'} applicants`,
+        );
+
+        // ── Fire callback immediately — send to Telegram right now ──
+        if (onJobFound) await onJobFound(finalJob);
       }
-      delete job._hasMust;
-      collected.push(job);
-      passed++;
+
+      // Next page
+      const hasNext = await clickNextPage(page);
+      if (!hasNext) {
+        console.log('  🚫 No next page');
+        break;
+      }
+      await sleep(2000);
+      pageNum++;
     }
 
-    console.log(
-      `  ✅ ${cards.length} cards → passed: ${passed} | blocked: ${blocked} | no-must: ${noMust} | low-score: ${lowScore}`,
-    );
-
-    if (collected.length >= CONFIG.TARGET_PER_TYPE) break;
-    if (cards.length === 0) break;
-
-    const hasNext = await clickNextPage(page);
-    if (!hasNext) {
-      console.log('  🚫 No next page');
-      break;
-    }
-    await sleep(CONFIG.DELAYS.afterNextPage);
-    pageNum++;
+    console.log(`\n📦 [${target.type}] done | Qualified total: ${qualified.length}`);
   }
 
-  return collected.sort((a, b) => b.score - a.score).slice(0, CONFIG.TARGET_PER_TYPE);
-}
+  console.log(`\n✅ Scrape complete — ${qualified.length} qualified from ${totalScrped} scraped`);
 
-// ── Main export — scrape with retry + full enrichment ─────────
-
-export async function scrapeType(page, context, entry) {
-  const { maxAttempts, delayMs } = CONFIG.RETRY;
-  const TARGET = CONFIG.TARGET_PER_TYPE;
-
-  let attempt = 1;
-  let jobs = [];
-
-  while (attempt <= maxAttempts) {
-    console.log(`\n🔍 [${entry.type}] Attempt ${attempt}/${maxAttempts}...`);
-    try {
-      jobs = await scrapeTypeOnce(page, entry);
-    } catch (err) {
-      console.error(`  ❌ Attempt ${attempt} error: ${err.message}`);
-    }
-
-    if (jobs.length >= TARGET) {
-      console.log(`  🎯 Got ${jobs.length} jobs — target hit!`);
-      break;
-    }
-
-    if (attempt < maxAttempts) {
-      console.log(`  ⚠️  Only ${jobs.length}/${TARGET}. Retrying in ${delayMs / 1000}s...`);
-      await sleep(delayMs);
-    } else {
-      console.log(`  ⚠️  Max retries reached. Moving on with ${jobs.length} jobs.`);
-    }
-
-    attempt++;
-  }
-
-  // Visit each job page — get Easy Apply, applicants, openings, salary, skills
-  if (jobs.length > 0) {
-    jobs = await enrichJobDetails(context, jobs);
-  }
-
-  return jobs;
+  return {
+    qualified,
+    totalScraped: totalScrped,
+  };
 }

@@ -5,12 +5,12 @@
 // ─────────────────────────────────────────────────────────────
 
 import { v4 as uuid } from 'uuid';
-import { launchBrowser } from '../utils/browser.js';
-import { scrapeUntilGoal } from '../scraper.js';
 import { updateStatus } from '../db/queries/jobs.js';
 import { insertRun, updateRun } from '../db/queries/runs.js';
 import { getSetting } from '../db/queries/settings.js';
-import { sendJob, sendHeader, sendFooter, notify } from '../utils/telegram.js';
+import { scrapeUntilGoal } from '../naukri.js';
+import { launchBrowser } from '../utils/browser.js';
+import { notify, sendFooter, sendHeader, sendJob } from '../utils/telegram.js';
 
 export async function runQuick(minutes = 15) {
   const DAILY_TARGET = getSetting('DAILY_TARGET');

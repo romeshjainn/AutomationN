@@ -10,7 +10,7 @@ import { v4 as uuid } from 'uuid';
 import { getRecentlySent, getSentTodayCount, updateStatus } from '../db/queries/jobs.js';
 import { insertRun, updateRun } from '../db/queries/runs.js';
 import { getSetting } from '../db/queries/settings.js';
-import { scrapeUntilGoal } from '../scraper.js';
+import { scrapeUntilGoal } from '../naukri.js';
 import { launchBrowser } from '../utils/browser.js';
 import { notify, sendDailyReport, sendHeader, sendJob } from '../utils/telegram.js';
 

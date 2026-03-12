@@ -403,7 +403,7 @@ export async function scrapeUntilGoal(page, context, runId, onJobFound = null, r
         if (!evaluation.pass) {
           if (evaluation.concerns) console.log(`       ⚠️  ${evaluation.concerns}`);
           continue;
-        }
+        } 
 
         // ── Passed everything — save and send ──────────────────
         const priority = evaluation.score >= 85 ? 'hot' : 'normal';

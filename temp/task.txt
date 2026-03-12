@@ -1,0 +1,47 @@
+I want to build a script that runs continuously, preferably from 9 AM to 5 PM, or for a set duration (like 5 hours), performing the following tasks:
+
+1. Job Finding and Sending:
+
+   * The script should find jobs with a score of 7+, have fewer applicants, and be recently posted.
+   * It will send these jobs to me via a Telegram bot.
+   * No duplicate jobs should be sent. The script should keep track of sent jobs to ensure it doesn't send the same job again.
+
+2. Job Update:
+
+   * After sending a job, the script should wait for 15 minutes and then check for better jobs. If a new job meets the criteria and is better than the previous one, it will be sent to me.
+
+3. Script Configuration:
+
+   * The script should allow me to configure its behavior using a config file. For example:
+
+     * How often to check for new jobs.
+     * Whether it should run continuously or execute in shorter bursts (e.g., if I only want to check once for the top 20 jobs).
+   * There should be an option to run the script quickly, where I can request the script to find and send the top 20 jobs immediately based on the set criteria.
+
+4. Job Criteria:
+
+   * The jobs should meet specific criteria:
+
+     * Score 7+
+     * Less applicants
+     * Recently posted
+     * Matches my profile
+   * The script should continuously analyze and send jobs one by one as it finds them, based on this criteria.
+
+5. Telegram Bot:
+
+   * I want a Telegram button that will:
+
+     * Keep track of the number of jobs I have applied to (through the button).
+     * Show the status of the script (e.g., whether it's currently active, how many jobs have been found, etc.).
+
+---
+
+Additional Notes:
+
+* The system must be efficient and handle job data effectively. It should minimize overlap and manage job status (e.g., sent, applied) properly.
+* There should be an option to run it in a low-traffic mode, where it only checks a limited number of jobs in quick bursts when I don’t want the script running all day.
+
+---
+
+Does this description look good to you? If you'd like to add or adjust anything, let me know!

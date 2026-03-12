@@ -16,8 +16,8 @@ export const CONFIG = {
   },
 
   BROWSER: {
-    headless: false,
-    slowMo: 80,
+    headless: true,
+    slowMo: 0,
     userAgent:
       'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/122.0.0.0 Safari/537.36',
     viewport: { width: 1440, height: 900 },

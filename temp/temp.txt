@@ -1,0 +1,33 @@
+# Naukri only (quick burst, 15 mins)                                                                                                                            
+  node index.js --platform=naukri --mode=quick                                                                                                                       
+  # Naukri live (runs all day until 6 PM)                                                                                                                           node index.js --platform=naukri --mode=live                                                                                                                     
+
+  # YC only
+  node index.js --platform=yc --mode=quick
+
+  # Both platforms live
+  node index.js --platform=all --mode=live
+
+  # Or just double-click bot.bat (launches both in separate windows)
+
+  Or via npm scripts:
+
+  npm run naukri          # naukri quick 15min
+  npm run naukri:live     # naukri all day
+  npm run yc              # yc quick 20min
+  npm run yc:live         # yc all day
+  npm run all:live        # both platforms simultaneously
+
+  Check DB stats:
+  npm run db              # last 50 jobs across all platforms
+  npm run db:stats        # counts by platform + status
+  npm run naukri:status   # today's naukri stats
+  npm run yc:status       # today's yc stats
+
+  Before running YC — make sure YC_BOT_TOKEN and YC_CHAT_ID are in .env (you've already set them to the same values as Naukri, so both will post to the same      
+  Telegram chat for now — create a separate bot later if you want separate channels).
+
+  One thing to check — the DB changed from data/naukri.db → data/jobs.db. Your old job history is in naukri.db. If you want to keep it:
+
+  # In the data/ folder, rename it
+  mv data/naukri.db data/jobs.db

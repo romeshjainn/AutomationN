@@ -1,62 +1,19 @@
 // ─────────────────────────────────────────────────────────────
-//  Scraper — goal-driven
-//  Scrapes page by page until DAILY_TARGET qualified jobs found
+//  Scraper — goal-driven with AI evaluation
 //
-//  3-gate system before visiting any detail page:
-//  Gate 1 — hard filter  (blocklist, date, exp)       free
-//  Gate 2 — pre-score    (keywords+recency+exp ≥ 40)  free
-//  Gate 3 — detail visit (applicants, salary, skills) costs a page visit
+//  Gate 1 — Hard filter   (static, instant) — blocklist/date/exp
+//  Gate 2 — Detail visit  — get full job data
+//  Gate 3 — AI evaluate   — gemma3:4b scores and pass/fails
 // ─────────────────────────────────────────────────────────────
 
-import { FILTERS } from '../config/filters.js';
+import { checkAI } from './ai/client.js';
+import { evaluateJob } from './ai/evaluator.js';
 import { JOB_TARGETS } from './constants/jobTargets.js';
 import { insertJob, isNewJob } from './db/queries/jobs.js';
 import { getSetting } from './db/queries/settings.js';
-import { hardFilter, hoursAgo, parseExperience } from './pipeline/filter.js';
-import { scoreJob } from './pipeline/scorer.js';
+import { hardFilter } from './pipeline/filter.js';
 import { clickNextPage, sortByDate } from './utils/browser.js';
 import { parsePostedOn, sleep } from './utils/helpers.js';
-
-// ── Pre-score gate (card data only, no page visit) ────────────
-// Uses keywords + recency + experience — max 70pts possible
-// If this doesn't clear 40, final score can never reach 70
-// so skip the detail page entirely
-
-const PRE_SCORE_THRESHOLD = 40;
-
-function preScore(card, keywords) {
-  const W = FILTERS.WEIGHTS;
-
-  // Keywords (0→35) using title + card skills
-  const haystack = `${card.title} ${card.skills || ''}`.toLowerCase();
-  const matched = keywords.filter((kw) => haystack.includes(kw.toLowerCase()));
-  const kwScore = Math.round((matched.length / keywords.length) * W.keywords);
-
-  // Recency (0→25)
-  const hours = hoursAgo(card.how_long);
-  let recencyScore = 0;
-  if (hours <= 3) recencyScore = FILTERS.RECENCY_SCORE.under_3_hours;
-  else if (hours <= 6) recencyScore = FILTERS.RECENCY_SCORE.under_6_hours;
-  else if (hours <= 12) recencyScore = FILTERS.RECENCY_SCORE.under_12_hours;
-  else if (hours <= 24) recencyScore = FILTERS.RECENCY_SCORE.under_24_hours;
-  else if (hours <= 48) recencyScore = FILTERS.RECENCY_SCORE.yesterday;
-
-  // Experience fit (0→10)
-  const exp = parseExperience(card.experience);
-  let expScore = FILTERS.EXP_SCORE.acceptable;
-  if (exp) {
-    if (exp.max <= 2.5) expScore = FILTERS.EXP_SCORE.perfect;
-    else if (exp.max <= 4) expScore = FILTERS.EXP_SCORE.acceptable;
-    else expScore = 0;
-  }
-
-  return {
-    total: kwScore + recencyScore + expScore,
-    kw: kwScore,
-    rec: recencyScore,
-    exp: expScore,
-  };
-}
 
 // ── DOM selectors ─────────────────────────────────────────────
 
@@ -144,8 +101,27 @@ async function extractListingCards(page) {
           '[class*="jobAge"]',
           'span[class*="date"]',
         );
+        const salary =
+          getText(
+            '[class*="salary"]',
+            '[class*="sal-wrap"]',
+            '[class*="ctc"]',
+            'span[class*="sal"]',
+            '[class*="compensation"]',
+            'li[class*="salary"]',
+            'span[class*="package"]',
+          ) ||
+          (() => {
+            // fallback — scan all text nodes for LPA/lakh pattern
+            const all = [...card.querySelectorAll('span, li, div')];
+            for (const el of all) {
+              const t = el.innerText?.trim() || '';
+              if (/lpa|lakh|₹|lac|per annum|ctc|p\.a/i.test(t) && t.length < 60) return t;
+            }
+            return '';
+          })();
 
-        return { title, link, skills, experience, city, how_long };
+        return { title, link, skills, experience, city, how_long, salary };
       })
       .filter((j) => j.title && j.link);
   }, CARD_SELECTORS);
@@ -241,9 +217,14 @@ export async function scrapeUntilGoal(page, context, runId, onJobFound = null, r
   const qualified = [];
   let totalScrped = 0;
 
-  console.log(`\n🎯 Goal: find ${DAILY_TARGET} more qualified jobs\n`);
+  // Check AI once at start — if down, fallback to static scoring
+  const aiAvailable = await checkAI();
+  console.log(
+    `\n🎯 Goal: find ${DAILY_TARGET} more qualified jobs | AI: ${aiAvailable ? '✅ ON' : '⚠️ OFF (static fallback)'}\n`,
+  );
 
-  for (const target of JOB_TARGETS) {
+  const shuffled = [...JOB_TARGETS].sort(() => Math.random() - 0.5);
+  for (const target of shuffled) {
     if (qualified.length >= DAILY_TARGET) break;
 
     console.log(`\n🔍 [${target.type}] Starting...`);
@@ -256,21 +237,23 @@ export async function scrapeUntilGoal(page, context, runId, onJobFound = null, r
     let deadPages = 0;
 
     while (qualified.length < DAILY_TARGET && pageNum <= MAX_PAGES_PER_TYPE) {
-      console.log(`  📄 Page ${pageNum} | Qualified so far: ${qualified.length}/${DAILY_TARGET}`);
+      console.log(`  📄 Page ${pageNum} | Qualified: ${qualified.length}/${DAILY_TARGET}`);
 
-      // Step 1 — get raw cards from listing
+      // ── Step 1: Extract listing cards ──────────────────────
       const rawCards = await extractListingCards(page);
       totalScrped += rawCards.length;
-
       if (!rawCards.length) break;
 
-      // Step 2 — hard filter (instant, no page visits)
+      // ── Step 2: Hard filter (free, instant) ────────────────
       const survivors = [];
       for (const card of rawCards) {
         const { passed, reason } = hardFilter({ ...card, type: target.type });
-        if (passed) survivors.push({ ...card, type: target.type });
+        if (passed) {
+          survivors.push({ ...card, type: target.type });
+        } else {
+          console.log(`    ✗ [${reason}] ${card.title}`);
+        }
       }
-
       console.log(`  ✅ ${rawCards.length} cards → ${survivors.length} passed hard filter`);
 
       if (survivors.length === 0) {
@@ -284,56 +267,26 @@ export async function scrapeUntilGoal(page, context, runId, onJobFound = null, r
         deadPages = 0;
       }
 
-      // Step 3 — visit detail pages ONLY for survivors that pass pre-score
+      // ── Step 3: Visit detail page + AI evaluate ─────────────
       for (const job of survivors) {
         if (qualified.length >= DAILY_TARGET) break;
 
-        // Gate 1 — dedup check (free)
+        // Dedup check
         if (!isNewJob(job.link)) {
-          console.log(`    ⏭  Duplicate — ${job.title}`);
+          console.log(`    ⏭  Seen before — ${job.title}`);
           continue;
         }
 
-        // Gate 2 — pre-score on card data only (free, no page visit)
-        // Scores keywords + recency + experience from listing card
-        // If can't reach MIN_SCORE even with perfect applicants/easy_apply → skip
-        const preScoreBreakdown = preScore(job, target.keywords);
-        const ps = preScoreBreakdown.total;
-
-        if (ps < PRE_SCORE_THRESHOLD) {
-          console.group(`⏭ SKIPPED: ${job.title}`);
-
-          console.log(`Score: ${ps} (threshold ${PRE_SCORE_THRESHOLD})`);
-
-          console.group('Score Breakdown');
-          console.log(`keywords: ${preScoreBreakdown.kw}`);
-          console.log(`recency : ${preScoreBreakdown.rec}`);
-          console.log(`exp     : ${preScoreBreakdown.exp}`);
-          console.groupEnd();
-
-          console.group('Job Details');
-          console.log(`posted: ${job.how_long}`);
-          console.log(`experience: ${job.experience}`);
-          console.log(`skills: ${job.skills?.slice(0, 60)}`);
-          console.groupEnd();
-
-          console.groupEnd();
-
-          continue;
-        }
-
-        // FIND THIS:
-        console.log(`    ⏭  Pre-score too low (${ps}) — skipping detail page — ${job.title}`);
-
-        // REPLACE WITH:
-
-        console.log(`    🔎 Pre-score: ${ps} — visiting detail page — ${job.title}`);
-
-        // Gate 3 — visit detail page (costs one page open)
+        // Visit detail page — get full data
+        console.log(`    🌐 Visiting: ${job.title}`);
         const detail = await scrapeDetail(context, job.link);
+
+        console.log(
+          `    💰 DEBUG detail — salary:"${detail.salary}" applicants:${detail.applicants} easy_apply:${detail.easy_apply}`,
+        );
         await sleep(400);
 
-        // Merge listing + detail
+        // Merge card + detail into full job object
         const enriched = {
           ...job,
           easy_apply: detail.easy_apply,
@@ -344,30 +297,50 @@ export async function scrapeUntilGoal(page, context, runId, onJobFound = null, r
           posted_on: parsePostedOn(job.how_long),
         };
 
-        // Step 4 — score
-        const { score, priority, matched_keywords, breakdown } = scoreJob(
-          enriched,
-          target.keywords,
-        );
+        // Instant reject — wrong stack or irrelevant role
 
-        const MIN_SCORE = getSetting('MIN_SCORE');
-        if (score < MIN_SCORE) {
-          console.log(`    ❌ Score too low (${score}) — ${job.title}`);
+        const INSTANT_REJECT =
+          /\bjava\b|\.net\b|spring boot|django|laravel|ruby on rails|angular developer|vue developer|kotlin developer|swift developer|data scientist|machine learning|devops engineer|qa engineer|test engineer|salesforce|sap \b|bpo|kpo|non.?voice|voice process|email process|chat process|back office|customer support|telecaller|data entry|email support|project manager|project lead|scrum master|delivery manager|program manager/i;
+
+        if (INSTANT_REJECT.test(`${job.title} ${enriched.skills_needed || ''}`)) {
+          console.log(`    ⛔ Instant reject (wrong stack) — ${job.title}`);
           continue;
         }
 
-        const finalJob = { ...enriched, score, priority, matched_keywords };
+        // ── AI evaluation ──────────────────────────────────────
+        console.log(`    🤖 AI evaluating: ${job.title}`);
+        const evaluation = await evaluateJob(enriched, target.type, target.keywords, aiAvailable);
 
-        // Save to DB
+        console.log(
+          `    ${evaluation.pass ? '✅' : '❌'} AI score: ${evaluation.score}/100 | ${evaluation.reason}`,
+        );
+
+        if (!evaluation.pass) {
+          if (evaluation.concerns) console.log(`       ⚠️  ${evaluation.concerns}`);
+          continue;
+        }
+
+        // ── Passed everything — save and send ──────────────────
+        const priority = evaluation.score >= 85 ? 'hot' : 'normal';
+        const finalJob = {
+          ...enriched,
+          score: evaluation.score,
+          priority,
+          matched_keywords: target.keywords.filter((kw) =>
+            `${job.title} ${enriched.skills_needed}`.toLowerCase().includes(kw.toLowerCase()),
+          ),
+          ai_reason: evaluation.reason,
+          ai_highlights: evaluation.highlights,
+        };
+
         insertJob(finalJob, runId);
         qualified.push(finalJob);
 
-        const tag = priority === 'hot' ? '🔥 HOT' : '✅';
-        console.log(
-          `    ${tag} [${score}/100] ${job.title} | ${detail.applicants ?? '?'} applicants`,
-        );
+        const tag = priority === 'hot' ? '🔥 HOT' : '✅ PASS';
+        console.log(`    ${tag} [${evaluation.score}/100] ${job.title}`);
+        if (evaluation.highlights) console.log(`       ⭐ ${evaluation.highlights}`);
 
-        // ── Fire callback immediately — send to Telegram right now ──
+        // Send to Telegram immediately
         if (onJobFound) await onJobFound(finalJob);
       }
 
@@ -386,8 +359,5 @@ export async function scrapeUntilGoal(page, context, runId, onJobFound = null, r
 
   console.log(`\n✅ Scrape complete — ${qualified.length} qualified from ${totalScrped} scraped`);
 
-  return {
-    qualified,
-    totalScraped: totalScrped,
-  };
+  return { qualified, totalScraped: totalScrped };
 }

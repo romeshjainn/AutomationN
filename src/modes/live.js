@@ -14,7 +14,7 @@ import { sendJob, sendHeader, sendDailyReport, notify } from '../utils/telegram.
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const INTERVAL = 20 * 60 * 1000; // 20 minutes
-const STOP_HOUR = 15; // 3 PM
+const STOP_HOUR = 18; // 6 PM
 
 export async function runLive() {
   const DAILY_TARGET = getSetting('DAILY_TARGET');

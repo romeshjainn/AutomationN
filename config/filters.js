@@ -5,7 +5,7 @@
 
 export const FILTERS = {
   // ── Daily goal ──────────────────────────────────────────────
-  DAILY_TARGET: 30, // stop scraping once 30 qualified jobs found
+  DAILY_TARGET: 20, // stop scraping once 30 qualified jobs found
   MAX_PAGES_PER_TYPE: 10, // safety — don't go past page 10 per type
   DEAD_PAGES_LIMIT: 3, // stop type if 3 consecutive pages give 0 results
 
@@ -23,11 +23,13 @@ export const FILTERS = {
   // ── Salary (LPA) ─────────────────────────────────────────────
   // Only kills if salary is DISCLOSED and below minimum
   // "Not Disclosed" always passes (benefit of doubt)
-  MIN_SALARY_LPA: 5.5,
+  MIN_SALARY_LPA: 5,
+
+  MAX_PER_HOUR: 4, // max 4 jobs per hour sent to Telegram
 
   // ── Score threshold ──────────────────────────────────────────
-  MIN_SCORE: 60, // hard kill below this
-  HOT_SCORE: 85, // flagged 🔥 and sent first
+  MIN_SCORE: 75, // hard kill below this
+  HOT_SCORE: 88, // flagged 🔥 and sent first
 
   // ── Scoring weights (must add up to 100) ─────────────────────
   WEIGHTS: {

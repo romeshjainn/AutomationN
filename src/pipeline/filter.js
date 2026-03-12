@@ -56,6 +56,13 @@ function parseSalaryMin(salaryStr) {
   return nums.length ? Math.min(...nums) : null;
 }
 
+function parseSalaryMax(salaryStr) {
+  if (!salaryStr) return null;
+  if (/not disclosed|n\/a/i.test(salaryStr)) return null;
+  const nums = salaryStr.match(/\d+(\.\d+)?/g)?.map(Number) || [];
+  if (!nums.length) return null;
+  return Math.max(...nums); // use highest number in range
+}
 /**
  * Main hard filter function.
  * Returns { passed: boolean, reason: string }
@@ -86,8 +93,8 @@ export function hardFilter(job) {
   }
 
   // ── 5. Salary — only kills if disclosed AND below minimum ────
-  const salaryMin = parseSalaryMin(job.salary);
-  if (salaryMin !== null && salaryMin < MIN_SALARY_LPA) {
+  const salaryMax = parseSalaryMax(job.salary);
+  if (salaryMax !== null && salaryMax < MIN_SALARY_LPA) {
     return { passed: false, reason: `salary_too_low (${job.salary})` };
   }
 

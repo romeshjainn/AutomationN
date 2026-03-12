@@ -13,9 +13,11 @@ import 'dotenv/config';
 import { runMigrations } from './src/db/migrations.js';
 import { getTodayStats } from './src/db/queries/jobs.js';
 import { sendDailyReport, notify } from './src/utils/telegram.js';
+import { checkAI } from './src/ai/client.js';
 
-// ── Bootstrap DB ─────────────────────────────────────────────
+// ── Bootstrap ─────────────────────────────────────────────────
 runMigrations();
+await checkAI(); // logs whether AI is ready or falling back to static
 
 // ── Parse flags ───────────────────────────────────────────────
 const args = process.argv.slice(2);

@@ -62,7 +62,7 @@ export const JOB_TARGETS = [
       'graphql',
       'axios',
     ],
-    url: 'https://www.naukri.com/react-dot-js-react-js-developer-react-js-frontend-developer-react-developer-nextjs-typescript-javascript-jobs?k=react.js%2C%20react%20js%20developer%2C%20react%20js%20frontend%20developer%2C%20react%20developer%2C%20nextjs%2C%20typescript%2C%20javascript&experience=3&nignbevent_src=jobsearchDeskGNB',
+    url: 'https://www.naukri.com/react-dot-js-react-js-developer-react-js-frontend-developer-react-developer-nextjs-typescript-javascript-jobs?k=react.js%2C%20react%20js%20developer%2C%20react%20js%20frontend%20developer%2C%20react%20developer%2C%20nextjs%2C%20typescript%2C%20javascript&nignbevent_src=jobsearchDeskGNB',
   },
 
   {
@@ -123,7 +123,7 @@ export const JOB_TARGETS = [
       'javascript',
       'typescript',
     ],
-    url: 'https://www.naukri.com/mern-stack-mern-stack-developer-mern-full-stack-developer-frontend-development-frontend-software-developer-node-dot-js-backend-mern-stack-mern-express-nestjs-jobs?k=mern%20stack%2C%20mern%20stack%20developer%2C%20mern%20full%20stack%20developer%2C%20frontend%20development%2C%20frontend%20software%20developer%2C%20node.js%2C%20backend%2C%20mern%20stack%2C%20mern%2C%20express%2C%20nestjs&experience=3&nignbevent_src=jobsearchDeskGNB',
+    url: 'https://www.naukri.com/mern-stack-mern-stack-developer-mern-full-stack-developer-frontend-development-frontend-software-developer-node-dot-js-backend-mern-stack-mern-express-nestjs-jobs?k=mern%20stack%2C%20mern%20stack%20developer%2C%20mern%20full%20stack%20developer%2C%20frontend%20development%2C%20frontend%20software%20developer%2C%20node.js%2C%20backend%2C%20mern%20stack%2C%20mern%2C%20express%2C%20nestjs&nignbevent_src=jobsearchDeskGNB',
   },
 
   {
@@ -166,6 +166,6 @@ export const JOB_TARGETS = [
       'javascript',
       'typescript',
     ],
-    url: 'https://www.naukri.com/react-native-react-native-developer-react-native-mobile-application-developer-node-dot-js-node-js-backend-developer-node-js-developer-backend-development-backend-react-native-jobs?k=react%20native%2C%20react%20native%20developer%2C%20react%20native%20mobile%20application%20developer%2C%20node.js%2C%20node%20js%20backend%20developer%2C%20node%20js%20developer%2C%20backend%20development%2C%20backend%2C%20react%20native&experience=3&nignbevent_src=jobsearchDeskGNB',
+    url: 'https://www.naukri.com/react-native-react-native-developer-react-native-mobile-application-developer-node-dot-js-node-js-backend-developer-node-js-developer-backend-development-backend-react-native-jobs?k=react%20native%2C%20react%20native%20developer%2C%20react%20native%20mobile%20application%20developer%2C%20node.js%2C%20node%20js%20backend%20developer%2C%20node%20js%20developer%2C%20backend%20development%2C%20backend%2C%20react%20native&nignbevent_src=jobsearchDeskGNB',
   },
 ];

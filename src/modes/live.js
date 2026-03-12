@@ -15,7 +15,8 @@ import { launchBrowser } from '../utils/browser.js';
 import { notify, sendDailyReport, sendHeader, sendJob } from '../utils/telegram.js';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const INTERVAL = 20 * 60 * 1000;
+// const INTERVAL = 20 * 60 * 1000;
+const INTERVAL = 3000;
 const STOP_HOUR = 18;
 
 export async function runLive() {
@@ -104,7 +105,7 @@ export async function runLive() {
         jobsSent: getSentTodayCount() - sentToday,
       });
 
-      console.log(`\n⏳ Next check in 20 mins...`);
+      console.log(`\n🔄 Restarting scrape immediately...`);
       await sleep(INTERVAL);
     }
   } catch (err) {

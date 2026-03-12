@@ -120,7 +120,22 @@ export function getTodayStats() {
     .get();
 }
 
-/** Top N jobs today by score — for daily report */
+/** Get last N sent jobs today — for quality comparison */
+export function getRecentlySent(n = 3) {
+  return db
+    .prepare(
+      `
+    SELECT score FROM jobs
+    WHERE status = 'sent'
+    AND DATE(sent_at) = DATE('now', 'localtime')
+    ORDER BY sent_at DESC
+    LIMIT ?
+  `,
+    )
+    .all(n);
+}
+
+/** Get last N sent jobs today by score — for daily report */
 export function getTopJobsToday(n = 3) {
   return db
     .prepare(

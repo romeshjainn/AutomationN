@@ -10,7 +10,7 @@
 #    ./bot.sh reset       → clear today's queue (keep seen history)
 # ─────────────────────────────────────────────────────────────
 
-MODE=${1:-quick}
+MODE=${1:-live}
 MINUTES=${2:-15}
 
 # Check node is available

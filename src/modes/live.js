@@ -1,97 +1,115 @@
 // ─────────────────────────────────────────────────────────────
 //  Live mode — runs all day, every 20 minutes
-//  Stops at STOP_HOUR (default 3 PM) or when daily cap hit
-//  Only sends NEW jobs each iteration (dedup handles the rest)
+//  Sends each job IMMEDIATELY as found
+//  Hot jobs (88+) always sent first
+//  Normal jobs compared against recent avg before sending
+//  Stops at 6 PM sharp or when daily cap hit
 // ─────────────────────────────────────────────────────────────
 
 import { v4 as uuid } from 'uuid';
-import { launchBrowser } from '../utils/browser.js';
-import { scrapeUntilGoal } from '../scraper.js';
-import { updateStatus, getSentTodayCount } from '../db/queries/jobs.js';
+import { getRecentlySent, getSentTodayCount, updateStatus } from '../db/queries/jobs.js';
 import { insertRun, updateRun } from '../db/queries/runs.js';
 import { getSetting } from '../db/queries/settings.js';
-import { sendJob, sendHeader, sendDailyReport, notify } from '../utils/telegram.js';
+import { scrapeUntilGoal } from '../scraper.js';
+import { launchBrowser } from '../utils/browser.js';
+import { notify, sendDailyReport, sendHeader, sendJob } from '../utils/telegram.js';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const INTERVAL = 20 * 60 * 1000; // 20 minutes
-const STOP_HOUR = 18; // 6 PM
+const INTERVAL = 20 * 60 * 1000;
+const STOP_HOUR = 18;
 
 export async function runLive() {
   const DAILY_TARGET = getSetting('DAILY_TARGET');
-  console.log(`🔄 Live mode started — runs every 20 mins until ${STOP_HOUR}:00`);
+  const HOT_SCORE = getSetting('HOT_SCORE');
+
+  console.log(`🔄 Live mode — every 20 mins until ${STOP_HOUR}:00 | target: ${DAILY_TARGET} jobs`);
 
   const { browser, context, page } = await launchBrowser();
-  let iteration = 0;
 
+  let headerSent = false;
+
+  // ── Fires immediately each time a job qualifies ──────────────
+  async function onJobFound(job) {
+    const currentSent = getSentTodayCount();
+
+    if (currentSent >= DAILY_TARGET) return;
+
+    if (!headerSent) {
+      await sendHeader(DAILY_TARGET, 'live');
+      headerSent = true;
+    }
+
+    // HOT job → send immediately, skip comparison
+    if (job.score >= HOT_SCORE) {
+      console.log(`\n🔥 HOT [${job.score}/100] — ${job.title}`);
+      await sendJob(job, currentSent + 1);
+      updateStatus(job.id, 'sent');
+      return;
+    }
+
+    // Normal job → compare against last 3 sent
+    const recent = getRecentlySent(3);
+    const avgScore = recent.length ? recent.reduce((s, j) => s + j.score, 0) / recent.length : 0;
+
+    if (recent.length < 3 || job.score >= avgScore - 5) {
+      console.log(`\n📱 Sending [${job.score}/100 vs avg ${Math.round(avgScore)}] — ${job.title}`);
+      await sendJob(job, currentSent + 1);
+      updateStatus(job.id, 'sent');
+    } else {
+      console.log(
+        `\n⏸  Holding [${job.score}/100 below avg ${Math.round(avgScore)}] — ${job.title}`,
+      );
+      // stays queued in DB
+    }
+  }
+
+  // ── Main loop ─────────────────────────────────────────────────
   try {
     while (true) {
-      const now = new Date();
-      const hour = now.getHours();
+      const hour = new Date().getHours();
 
-      // Stop at end of day
+      // 6 PM → stop
       if (hour >= STOP_HOUR) {
-        console.log(`\n🛑 It's ${STOP_HOUR}:00 — stopping live mode`);
+        console.log(`\n🛑 ${STOP_HOUR}:00 — stopping live mode`);
         await sendDailyReport();
         break;
       }
 
-      // Check daily cap
       const sentToday = getSentTodayCount();
+
+      // Cap hit → go silent but keep looping (hot jobs can still appear)
       if (sentToday >= DAILY_TARGET) {
-        console.log(`\n🎯 Daily target reached (${sentToday}/${DAILY_TARGET}) — going silent`);
-        await notify(
-          `✅ Daily target of ${DAILY_TARGET} jobs reached! Bot going silent. Check your list and start applying 🚀`,
-        );
-        break;
+        console.log(`\n🎯 Cap hit (${sentToday}/${DAILY_TARGET}) — silent until 6 PM`);
+        await sleep(INTERVAL);
+        continue;
       }
 
-      iteration++;
       const remaining = DAILY_TARGET - sentToday;
-      console.log(
-        `\n🔄 Iteration ${iteration} | Sent today: ${sentToday}/${DAILY_TARGET} | Need ${remaining} more`,
-      );
-
       const runId = uuid();
       insertRun(runId, 'live');
 
-      const { qualified, hotJobs, totalScraped } = await scrapeUntilGoal(page, context, runId);
+      console.log(`\n🔄 Scraping | Sent: ${sentToday}/${DAILY_TARGET} | Need: ${remaining}`);
 
-      // Only truly new jobs (insertJob already deduped, check status=queued)
-      const newJobs = qualified.filter((j) => j.id); // only jobs that were actually inserted
-
-      console.log(`\n📬 ${newJobs.length} new jobs this iteration`);
-
-      // Send hot jobs first, immediately
-      const hotNew = newJobs.filter((j) => j.priority === 'hot');
-      const normalNew = newJobs
-        .filter((j) => j.priority !== 'hot')
-        .sort((a, b) => b.score - a.score);
-
-      const allToSend = [...hotNew, ...normalNew].slice(0, remaining);
-
-      for (let i = 0; i < allToSend.length; i++) {
-        const job = allToSend[i];
-        await sendJob(job, sentToday + i + 1);
-        updateStatus(job.id, 'sent');
-        await sleep(350);
-      }
+      const { totalScraped, qualified } = await scrapeUntilGoal(
+        page,
+        context,
+        runId,
+        onJobFound,
+        remaining,
+      );
 
       updateRun(runId, {
         jobsScraped: totalScraped,
         jobsQualified: qualified.length,
-        jobsSent: allToSend.length,
+        jobsSent: getSentTodayCount() - sentToday,
       });
 
-      if (allToSend.length === 0) {
-        console.log('💤 No new jobs this round — waiting for next iteration');
-      }
-
-      console.log(`\n⏳ Next check in 20 minutes...`);
+      console.log(`\n⏳ Next check in 20 mins...`);
       await sleep(INTERVAL);
     }
   } catch (err) {
     console.error('❌ Live mode error:', err.message);
-    await notify(`❌ Bot error in live mode: ${err.message}`);
+    await notify(`❌ Bot error: ${err.message}`);
   } finally {
     await browser.close();
   }

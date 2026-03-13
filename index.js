@@ -12,11 +12,10 @@
 // ─────────────────────────────────────────────────────────────
 
 import 'dotenv/config';
-import { runMigrations } from './core/db/migrations.js';
 import { checkAI } from './core/ai/client.js';
-import { PLATFORMS, PLATFORM_NAMES } from './platforms/index.js';
+import { runMigrations } from './core/db/migrations.js';
 import { getTodayStats } from './core/db/queries/jobs.js';
-import { sendDailyReport } from './core/telegram/base.js';
+import { PLATFORMS, PLATFORM_NAMES } from './platforms/index.js';
 
 // ── Parse CLI flags ───────────────────────────────────────────
 
@@ -28,8 +27,8 @@ const getArg = (flag) => {
 };
 
 const platform = getArg('platform') || 'naukri';
-const mode     = getArg('mode')     || 'quick';
-const minutes  = parseInt(getArg('minutes') || '15');
+const mode = getArg('mode') || 'quick';
+const minutes = parseInt(getArg('minutes') || '15');
 
 // ── Validate ──────────────────────────────────────────────────
 
@@ -69,7 +68,10 @@ if (platform === 'all') {
   } else if (mode === 'quick') {
     // Quick mode — run sequentially (avoid resource contention)
     for (const [key, config] of targets) {
-      if (!config.modes.quick) { console.warn(`⚠️  Platform "${key}" has no quick mode — skipping`); continue; }
+      if (!config.modes.quick) {
+        console.warn(`⚠️  Platform "${key}" has no quick mode — skipping`);
+        continue;
+      }
       console.log(`\n${'═'.repeat(50)}\n  ${config.name}\n${'═'.repeat(50)}\n`);
       const mod = await config.modes.quick();
       await mod.runQuick(minutes);
@@ -86,23 +88,18 @@ const config = PLATFORMS[platform];
 if (mode === 'quick') {
   const { runQuick } = await config.modes.quick();
   await runQuick(minutes);
-
 } else if (mode === 'live') {
   const { runLive } = await config.modes.live();
   await runLive();
-
 } else if (mode === 'report') {
   // Load platform-specific telegram config
-  const tgMod = await import(`./platforms/${platform}/config/telegram.js`);
-  const tgKey = Object.keys(tgMod)[0]; // e.g. NAUKRI_TELEGRAM or YC_TELEGRAM
-  await sendDailyReport(tgMod[tgKey], platform);
+  const { sendDailyReport } = await import(`./platforms/${platform}/src/utils/telegram.js`);
+  await sendDailyReport();
   console.log(`✅ Daily report sent for ${platform}`);
-
 } else if (mode === 'status') {
   const stats = getTodayStats(platform);
   console.log(`\n📊 Today's stats [${platform}]:`);
   console.table(stats);
-
 } else {
   console.error(`❌ Unknown mode: "${mode}"`);
   console.error('   Valid modes: quick, live, report, status');

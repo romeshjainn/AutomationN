@@ -1,20 +1,21 @@
 // ─────────────────────────────────────────────────────────────
-//  core/telegram/base.js — Shared send functions
+//  core/telegram/base.js
 //
-//  All functions take `tg = { token, chatId }` as first arg.
-//  Each platform passes its own token/chatId — fully isolated.
-//  No env vars read here — platforms handle that.
+//  Raw Telegram utilities ONLY.
+//  No job formatting, no buttons, no platform logic here.
+//  Every platform imports these and builds on top.
 // ─────────────────────────────────────────────────────────────
 
-import { updateStatus, getTodayStats } from '../db/queries/jobs.js';
+export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+// ── Core send functions ───────────────────────────────────────
 
-// ── Low level send ────────────────────────────────────────────
-
-async function sendMessage(tg, text, extra = {}) {
-  const TELEGRAM_API = `https://api.telegram.org/bot${tg.token}`;
-  const res = await fetch(`${TELEGRAM_API}/sendMessage`, {
+/**
+ * Send a plain text or HTML message.
+ * All other send functions build on this.
+ */
+export async function sendMessage(tg, text, extra = {}) {
+  const res = await fetch(`https://api.telegram.org/bot${tg.token}/sendMessage`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -25,152 +26,57 @@ async function sendMessage(tg, text, extra = {}) {
       ...extra,
     }),
   });
-  if (!res.ok) console.error('❌ Telegram error:', await res.text());
+  if (!res.ok) console.error('❌ Telegram sendMessage error:', await res.text());
   return res.ok;
 }
 
-// ── Format one job ────────────────────────────────────────────
-
-function formatJob(job, index) {
-  const hotFlag = job.priority === 'hot' ? '🔥 ' : '';
-  const stars = '⭐'.repeat(Math.min(5, Math.round(job.score / 20)));
-
-  let applicantLine = '';
-  if (job.applicants !== null && job.applicants !== undefined) {
-    const hot = job.applicants < 10 ? '🔥 ' : '';
-    applicantLine = `👥 ${hot}${job.applicants} Applicants`;
-  } else {
-    applicantLine = '👥 Applicants: Not Disclosed';
-  }
-
-  const openingLine = job.openings
-    ? `  |  📋 ${job.openings} Opening${job.openings > 1 ? 's' : ''}`
-    : '';
-  const salaryLine = job.salary ? `\n💰 ${job.salary}` : '\n💰 Salary: Not Disclosed';
-  const easyApply = job.easy_apply ? '✅ Easy Apply' : '📝 Manual Apply';
-  const posted = job.how_long || job.posted_on || 'Unknown';
-
-  const skills =
-    (job.skills_needed || 'N/A').split(',').slice(0, 8).join(', ') +
-    ((job.skills_needed || '').split(',').length > 8 ? '…' : '');
-
-  const matched = Array.isArray(job.matched_keywords)
-    ? job.matched_keywords.join(', ')
-    : job.matched_keywords || '';
-
-  return (
-    `${hotFlag}<b>${index}. ${job.title}</b>\n\n` +
-    `🏢 ${job.city || 'Location N/A'}\n` +
-    `💼 Experience: ${job.experience || 'N/A'}\n` +
-    `${easyApply}${salaryLine}\n` +
-    `⏰ Posted: ${posted}\n` +
-    `${applicantLine}${openingLine}\n\n` +
-    `🎯 Score: <b>${job.score}/100</b>  ${stars}\n` +
-    `🛠 <b>Skills:</b> <i>${skills}</i>\n` +
-    `🔑 <b>Matched:</b> ${matched}`
-  );
-}
-
-// ── Inline buttons ────────────────────────────────────────────
-
-function jobButtons(job) {
-  return {
-    inline_keyboard: [
-      [
-        { text: '✅ Apply', url: job.link },
-        { text: '🔖 Save', callback_data: `save_${job.id}` },
-        { text: '⏭ Skip', callback_data: `skip_${job.id}` },
-      ],
-    ],
-  };
-}
-
-// ── Public API ────────────────────────────────────────────────
-
-export async function sendJob(tg, job, index) {
-  const text = formatJob(job, index);
-  await sendMessage(tg, text, { reply_markup: jobButtons(job) });
-  await sleep(350);
-}
-
-export async function sendHeader(tg, totalJobs, mode) {
-  const now = new Date().toLocaleString('en-IN', {
-    timeZone: 'Asia/Kolkata',
-    weekday: 'long',
-    day: 'numeric',
-    month: 'short',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: true,
-  });
-  const hour = new Date().getHours();
-  const greeting = hour < 12 ? 'Morning' : hour < 17 ? 'Afternoon' : 'Evening';
-  const modeTag = mode === 'quick' ? '⚡ Quick Run' : '🔄 Live Mode';
-
-  await sendMessage(
-    tg,
-    `🌅 <b>Good ${greeting}, Romeh!</b>\n\n` +
-      `${modeTag} — ${now}\n` +
-      `📊 Sending <b>${totalJobs} best jobs</b> today\n` +
-      `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
-  );
-}
-
-export async function sendFooter(tg, stats) {
-  await sendMessage(
-    tg,
-    `━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
-      `✅ <b>That's all ${stats.total} jobs!</b>\n\n` +
-      `👆 Apply to <b>score 80+</b> and <b>Easy Apply</b> first\n` +
-      `🔥 Hot jobs = less than 10 applicants\n` +
-      `💡 Tip: Less applicants = faster callback\n\n` +
-      `Good luck today! 🚀`,
-  );
-}
-
-export async function sendDailyReport(tg, platform = null) {
-  const stats = getTodayStats(platform);
-  const total = stats.sent + stats.applied + stats.skipped + stats.saved;
-
-  await sendMessage(
-    tg,
-    `📊 <b>Daily Report</b>\n` +
-      `━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n` +
-      `🔍 Sent to you:  <b>${total}</b>\n` +
-      `✅ Applied:      <b>${stats.applied}</b>\n` +
-      `⏭  Skipped:     <b>${stats.skipped}</b>\n` +
-      `🔖 Saved:        <b>${stats.saved}</b>\n` +
-      `🔥 Hot jobs:     <b>${stats.hot_jobs}</b>\n\n` +
-      `━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
-      `Good work today! 💪`,
-  );
-}
-
-export async function handleCallback(tg, body) {
-  const TELEGRAM_API = `https://api.telegram.org/bot${tg.token}`;
-  const callback = body?.callback_query;
-  if (!callback) return;
-
-  const data = callback.data || '';
-  const [action, jobId] = data.split('_');
-  const id = parseInt(jobId);
-
-  const statusMap = { save: 'saved', skip: 'skipped' };
-  const status = statusMap[action];
-
-  if (status && id) {
-    updateStatus(id, status);
-    const emoji = status === 'saved' ? '🔖 Saved!' : '⏭ Skipped!';
-    await sendMessage(tg, `${emoji} Job #${id} marked as ${status}.`);
-  }
-
-  await fetch(`${TELEGRAM_API}/answerCallbackQuery`, {
+/**
+ * Edit buttons on an existing message.
+ * Used to update button state after tap (e.g. Applied → ✅ Applied!)
+ */
+export async function editMessageButtons(tg, messageId, inlineKeyboard) {
+  const res = await fetch(`https://api.telegram.org/bot${tg.token}/editMessageReplyMarkup`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ callback_query_id: callback.id }),
+    body: JSON.stringify({
+      chat_id: tg.chatId,
+      message_id: messageId,
+      reply_markup: { inline_keyboard: inlineKeyboard },
+    }),
+  });
+  if (!res.ok) console.error('❌ Telegram editButtons error:', await res.text());
+  return res.ok;
+}
+
+/**
+ * Answer a callback query — removes loading spinner on button tap.
+ * Always call this after handling any button tap.
+ */
+export async function answerCallback(tg, callbackQueryId, text = '') {
+  await fetch(`https://api.telegram.org/bot${tg.token}/answerCallbackQuery`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      callback_query_id: callbackQueryId,
+      text,
+    }),
   });
 }
 
+/**
+ * Quick notify — send a plain text alert.
+ * Use for errors, status updates, daily cap hits etc.
+ */
 export async function notify(tg, text) {
-  await sendMessage(tg, text);
+  await sendMessage(tg, `ℹ️ ${text}`);
+}
+
+/**
+ * Send with inline keyboard buttons.
+ * Pass fully built inline_keyboard array — platform decides the buttons.
+ */
+export async function sendWithButtons(tg, text, inlineKeyboard) {
+  return sendMessage(tg, text, {
+    reply_markup: { inline_keyboard: inlineKeyboard },
+  });
 }

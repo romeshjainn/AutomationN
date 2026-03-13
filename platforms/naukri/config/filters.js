@@ -7,7 +7,7 @@ export const FILTERS = {
   // ── Daily goal ──────────────────────────────────────────────
   DAILY_TARGET: 20,
   MAX_PAGES_PER_TYPE: 10,
-  DEAD_PAGES_LIMIT: 3,
+  DEAD_PAGES_LIMIT: 10,
 
   // ── Date filter ──────────────────────────────────────────────
   MAX_DAYS_OLD: 1, // today or yesterday only

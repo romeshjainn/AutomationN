@@ -12,8 +12,8 @@ import { insertRun, updateRun } from '../../../../core/db/queries/runs.js';
 import { getSetting } from '../utils/settings.js';
 import { scrapeUntilGoal } from '../scraper/index.js';
 import { launchBrowser } from '../utils/browser.js';
-import { NAUKRI_TELEGRAM } from '../../config/telegram.js';
-import { notify, sendDailyReport, sendHeader, sendJob } from '../../../../core/telegram/base.js';
+import { NAUKRI_TELEGRAM, notify, sendDailyReport, sendHeader, sendJob } from '../../config/telegram.js';
+// import { notify, sendDailyReport, sendHeader, sendJob } from '../../../../core/telegram/base.js';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const INTERVAL = parseInt(process.env.SCRAPE_INTERVAL_MS ?? '0'); // 0 = restart immediately

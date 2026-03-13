@@ -7,14 +7,14 @@
 //  Gate 3 — AI evaluate   — gemma3:4b scores and pass/fails
 // ─────────────────────────────────────────────────────────────
 
-import { checkAI } from '../../../../core/ai/client.js';
+import { checkAI } from '#core/ai/client.js';
 import { evaluateJob } from '../ai/prompt.js';
 import { JOB_TARGETS } from '../../config/targets.js';
-import { insertJob, isNewJob } from '../../../../core/db/queries/jobs.js';
+import { insertJob, isNewJob } from '#core/db/queries/jobs.js';
 import { getSetting } from '../utils/settings.js';
 import { hardFilter } from '../pipeline/filter.js';
 import { clickNextPage, sortByDate } from '../utils/browser.js';
-import { parsePostedOn, sleep } from '../../../../core/utils/helpers.js';
+import { parsePostedOn, sleep } from '#core/utils/helpers.js';
 
 const PLATFORM = 'naukri';
 

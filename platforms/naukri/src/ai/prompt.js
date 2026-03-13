@@ -8,7 +8,7 @@
 //  Fallback: static scoring if Ollama is down
 // ─────────────────────────────────────────────────────────────
 
-import { askAI } from '../../../../core/ai/client.js';
+import { askAI } from '#core/ai/client.js';
 import { scoreJob } from '../pipeline/scorer.js';
 import { getSetting } from '../utils/settings.js';
 

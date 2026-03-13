@@ -5,25 +5,25 @@
   "type": "module",
   "main": "index.js",
   "scripts": {
-    "start":          "node index.js --platform=naukri --mode=quick --minutes=15",
-
-    "naukri":         "node index.js --platform=naukri --mode=quick --minutes=15",
-    "naukri:30":      "node index.js --platform=naukri --mode=quick --minutes=30",
-    "naukri:live":    "node index.js --platform=naukri --mode=live",
-    "naukri:report":  "node index.js --platform=naukri --mode=report",
-    "naukri:status":  "node index.js --platform=naukri --mode=status",
-
-    "yc":             "node index.js --platform=yc --mode=quick --minutes=20",
-    "yc:live":        "node index.js --platform=yc --mode=live",
-    "yc:report":      "node index.js --platform=yc --mode=report",
-    "yc:status":      "node index.js --platform=yc --mode=status",
-
-    "all:live":       "node index.js --platform=all --mode=live",
-    "all:quick":      "node index.js --platform=all --mode=quick",
-
-    "db":             "node --input-type=module --eval \"import db from './core/db/client.js'; console.table(db.prepare('SELECT id,platform,title,score,status,applicants,how_long,city FROM jobs ORDER BY found_at DESC LIMIT 50').all())\"",
-    "db:stats":       "node --input-type=module --eval \"import db from './core/db/client.js'; console.table(db.prepare('SELECT platform, status, COUNT(*) as count FROM jobs GROUP BY platform, status').all())\"",
-    "db:applied":     "node --input-type=module --eval \"import db from './core/db/client.js'; console.table(db.prepare(\\\"SELECT * FROM jobs WHERE status='applied'\\\").all())\""
+    "start": "node index.js --platform=naukri --mode=quick --minutes=15",
+    "naukri": "node index.js --platform=naukri --mode=quick --minutes=15",
+    "naukri:30": "node index.js --platform=naukri --mode=quick --minutes=30",
+    "naukri:live": "node index.js --platform=naukri --mode=live",
+    "naukri:report": "node index.js --platform=naukri --mode=report",
+    "naukri:status": "node index.js --platform=naukri --mode=status",
+    "yc": "node index.js --platform=yc --mode=quick --minutes=20",
+    "yc:live": "node index.js --platform=yc --mode=live",
+    "yc:report": "node index.js --platform=yc --mode=report",
+    "yc:status": "node index.js --platform=yc --mode=status",
+    "all:live": "node index.js --platform=all --mode=live",
+    "all:quick": "node index.js --platform=all --mode=quick",
+    "db": "node --input-type=module --eval \"import db from './core/db/client.js'; console.table(db.prepare('SELECT id,platform,title,score,status,applicants,how_long,city FROM jobs ORDER BY found_at DESC LIMIT 50').all())\"",
+    "db:stats": "node --input-type=module --eval \"import db from './core/db/client.js'; console.table(db.prepare('SELECT platform, status, COUNT(*) as count FROM jobs GROUP BY platform, status').all())\"",
+    "db:applied": "node --input-type=module --eval \"import db from './core/db/client.js'; console.table(db.prepare(\\\"SELECT * FROM jobs WHERE status='applied'\\\").all())\""
+  },
+  "imports": {
+    "#core/*": "./core/*",
+    "#platforms/*": "./platforms/*"
   },
   "keywords": [],
   "author": "",

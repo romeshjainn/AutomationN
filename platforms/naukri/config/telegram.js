@@ -6,16 +6,16 @@
 //  Uses core/telegram/base.js for raw sending.
 // ─────────────────────────────────────────────────────────────
 
-// import { getTodayStats, updateStatus } from '../../../../../core/db/queries/jobs.js';
-// import {
-//   answerCallback,
-//   notify as coreNotify,
-//   editMessageButtons,
-//   sendMessage,
-//   sendWithButtons,
-//   sleep,
-// } from '../../../../../core/telegram/base.js';
-import { getTodayStats, updateStatus } from '../../../core/db/queries/jobs.js';
+import { getTodayStats, updateStatus } from '#core/db/queries/jobs.js';
+
+import {
+  answerCallback,
+  notify as coreNotify,
+  editMessageButtons,
+  sendMessage,
+  sendWithButtons,
+  sleep,
+} from '#core/telegram/base.js';
 
 export const NAUKRI_TELEGRAM = {
   token: process.env.NAUKRI_BOT_TOKEN,
@@ -114,6 +114,18 @@ export async function sendHeader(totalJobs, mode) {
       `${modeTag} — ${now}\n` +
       `📊 Sending <b>${totalJobs} best jobs</b> today\n` +
       `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+  );
+}
+
+export async function sendFooter(totalSent) {
+  await sendMessage(
+    NAUKRI_TELEGRAM,
+    `━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
+      `✅ <b>That's all ${totalSent} jobs!</b>\n\n` +
+      `👆 Apply to <b>score 80+</b> and <b>Easy Apply</b> first\n` +
+      `🔥 Hot jobs = less than 10 applicants\n` +
+      `💡 Tip: Less applicants = faster callback\n\n` +
+      `Good luck today! 🚀`,
   );
 }
 

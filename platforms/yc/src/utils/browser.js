@@ -5,7 +5,7 @@
 // ─────────────────────────────────────────────────────────────
 
 import { chromium } from 'playwright';
-import { sleep } from '../../../../core/utils/helpers.js';
+import { sleep } from '#core/utils/helpers.js';
 
 const BROWSER_CONFIG = {
   headless: false,

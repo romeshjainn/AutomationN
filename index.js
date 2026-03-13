@@ -12,10 +12,10 @@
 // ─────────────────────────────────────────────────────────────
 
 import 'dotenv/config';
-import { checkAI } from './core/ai/client.js';
-import { runMigrations } from './core/db/migrations.js';
-import { getTodayStats } from './core/db/queries/jobs.js';
-import { PLATFORMS, PLATFORM_NAMES } from './platforms/index.js';
+import { checkAI } from '#core/ai/client.js';
+import { runMigrations } from '#core/db/migrations.js';
+import { getTodayStats } from '#core/db/queries/jobs.js';
+import { PLATFORMS, PLATFORM_NAMES } from '#platforms/index.js';
 
 // ── Parse CLI flags ───────────────────────────────────────────
 

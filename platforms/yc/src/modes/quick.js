@@ -4,13 +4,13 @@
 // ─────────────────────────────────────────────────────────────
 
 import { v4 as uuid } from 'uuid';
-import { updateStatus } from '../../../../core/db/queries/jobs.js';
-import { insertRun, updateRun } from '../../../../core/db/queries/runs.js';
+import { updateStatus } from '#core/db/queries/jobs.js';
+import { insertRun, updateRun } from '#core/db/queries/runs.js';
 import { getSetting } from '../utils/settings.js';
 import { scrapeUntilGoal } from '../scraper/index.js';
 import { launchBrowser } from '../utils/browser.js';
 import { YC_TELEGRAM } from '../../config/telegram.js';
-import { notify, sendFooter, sendHeader, sendJob } from '../../../../core/telegram/base.js';
+import { notify, sendFooter, sendHeader, sendJob } from '#core/telegram/base.js';
 
 const PLATFORM = 'yc';
 

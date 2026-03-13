@@ -9,14 +9,14 @@
 //  Run with headless: false to debug DOM visually.
 // ─────────────────────────────────────────────────────────────
 
-import { checkAI } from '../../../../core/ai/client.js';
+import { checkAI } from '#core/ai/client.js';
 import { evaluateJob } from '../ai/prompt.js';
 import { JOB_TARGETS } from '../../config/targets.js';
-import { insertJob, isNewJob } from '../../../../core/db/queries/jobs.js';
+import { insertJob, isNewJob } from '#core/db/queries/jobs.js';
 import { getSetting } from '../utils/settings.js';
 import { hardFilter } from '../pipeline/filter.js';
 import { launchBrowser, scrollForMore } from '../utils/browser.js';
-import { parsePostedOn, sleep } from '../../../../core/utils/helpers.js';
+import { parsePostedOn, sleep } from '#core/utils/helpers.js';
 
 const PLATFORM = 'yc';
 

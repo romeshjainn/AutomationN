@@ -5,13 +5,13 @@
 // ─────────────────────────────────────────────────────────────
 
 import { v4 as uuid } from 'uuid';
-import { updateStatus } from '../../../../core/db/queries/jobs.js';
-import { insertRun, updateRun } from '../../../../core/db/queries/runs.js';
-import { getSetting } from '../utils/settings.js';
+import { updateStatus } from '#core/db/queries/jobs.js';
+import { insertRun, updateRun } from '#core/db/queries/runs.js';
+import { NAUKRI_TELEGRAM, notify, sendFooter, sendHeader, sendJob } from '../../config/telegram.js';
 import { scrapeUntilGoal } from '../scraper/index.js';
 import { launchBrowser } from '../utils/browser.js';
-import { NAUKRI_TELEGRAM } from '../../config/telegram.js';
-import { notify, sendFooter, sendHeader, sendJob } from '../../../../core/telegram/base.js';
+import { getSetting } from '../utils/settings.js';
+// import { notify, sendFooter, sendHeader, sendJob } from '#core/telegram/base.js';
 
 const PLATFORM = 'naukri';
 
@@ -41,7 +41,11 @@ export async function runQuick(minutes = 15) {
       );
 
       const { totalScraped } = await scrapeUntilGoal(
-        page, context, runId, onJobFound, DAILY_TARGET - sentCount,
+        page,
+        context,
+        runId,
+        onJobFound,
+        DAILY_TARGET - sentCount,
       );
 
       if (sentCount >= DAILY_TARGET) {
@@ -60,7 +64,10 @@ export async function runQuick(minutes = 15) {
   }
 
   if (sentCount === 0) {
-    await notify(NAUKRI_TELEGRAM, '😔 No qualifying jobs found. Try lowering MIN_SCORE in config/filters.js');
+    await notify(
+      NAUKRI_TELEGRAM,
+      '😔 No qualifying jobs found. Try lowering MIN_SCORE in config/filters.js',
+    );
     return;
   }
 

@@ -8,7 +8,7 @@ import {
   getSetting as _get,
   setSetting as _set,
   getAllSettings as _all,
-} from '../../../../core/db/queries/settings.js';
+} from '#core/db/queries/settings.js';
 import { FILTERS } from '../../config/filters.js';
 
 const PLATFORM = 'yc';
